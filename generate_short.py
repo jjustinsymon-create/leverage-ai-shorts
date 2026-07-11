@@ -12,7 +12,7 @@ from pathlib import Path
 from PIL import Image, ImageDraw, ImageFont
 import numpy as np
 import edge_tts
-import google.generativeai as genai
+from google import genai
 from moviepy.editor import (
     VideoFileClip, AudioFileClip, ImageClip, ColorClip,
     CompositeVideoClip, concatenate_videoclips
@@ -23,7 +23,7 @@ from googleapiclient.http import MediaFileUpload
 from google.oauth2.credentials import Credentials
 from google.auth.transport.requests import Request
 
-# ── CONFIG ────────────────────────────────────────────────────────────────────
+# ── CONFIG ────────────────────────────────────────────────────────────────────────────
 CHANNEL = "Leverage AI"
 TAGLINE = "Work less. Build more."
 W, H = 1080, 1920   # 9:16 vertical
@@ -45,11 +45,10 @@ FOOTAGE = "/tmp/footage.mp4"
 OUTPUT  = "/tmp/short.mp4"
 
 
-# ── STEP 1: GENERATE SCRIPT ───────────────────────────────────────────────────
+# ── STEP 1: GENERATE SCRIPT ────────────────────────────────────────────────────────────────────────
 def make_script(topic: str) -> str:
     """Use Google Gemini Flash (free tier) to generate a 60-second script."""
-    genai.configure(api_key=GEMINI_KEY)
-    model = genai.GenerativeModel("gemini-1.5-flash")
+    client = genai.Client(api_key=GEMINI_KEY)
     prompt = f"""Write a 60-second YouTube Shorts script for the Leverage AI channel.
 
 Topic: {topic}
@@ -63,11 +62,14 @@ Rules:
 - Maximum 150 words
 - Return ONLY the spoken script. Nothing else. No labels, no formatting."""
 
-    response = model.generate_content(prompt)
+    response = client.models.generate_content(
+        model="gemini-2.0-flash",
+        contents=prompt,
+    )
     return response.text.strip()
 
 
-# ── STEP 2: GENERATE VOICEOVER ────────────────────────────────────────────────
+# ── STEP 2: GENERATE VOICEOVER ────────────────────────────────────────────────────────────────────────
 async def make_voice(script: str, path: str):
     """Edge-TTS: Microsoft neural voices, completely free, no API key needed."""
     voice = "en-US-AndrewMultilingualNeural"  # Natural male voice
@@ -75,7 +77,7 @@ async def make_voice(script: str, path: str):
     await comm.save(path)
 
 
-# ── STEP 3: FETCH STOCK FOOTAGE ───────────────────────────────────────────────
+# ── STEP 3: FETCH STOCK FOOTAGE ──────────────────────────────────────────────────────────────────────
 def fetch_footage(topic: str, path: str) -> bool:
     """Pexels API is free. Downloads portrait-orientation stock video."""
     headers = {"Authorization": PEXELS_KEY}
@@ -116,7 +118,7 @@ def fetch_footage(topic: str, path: str) -> bool:
     return False
 
 
-# ── STEP 4: BUILD VIDEO ───────────────────────────────────────────────────────
+# ── STEP 4: BUILD VIDEO ───────────────────────────────────────────────────────────────────────────────
 def _load_font(size: int, bold: bool = False):
     """Load DejaVu font (installed in GitHub Actions via apt)."""
     variants = [
@@ -231,7 +233,7 @@ def build_video(script: str, audio_path: str, footage_path: str, output: str):
     print(f"  ✓ Video built: {output}")
 
 
-# ── STEP 5: UPLOAD TO YOUTUBE ─────────────────────────────────────────────────
+# ── STEP 5: UPLOAD TO YOUTUBE ────────────────────────────────────────────────────────────────────────
 def upload_to_youtube(video_path: str, topic: str, script: str):
     """Upload to YouTube using OAuth credentials stored as GitHub Secret."""
     creds_data = json.loads(YT_CREDS)
@@ -254,10 +256,10 @@ def upload_to_youtube(video_path: str, topic: str, script: str):
 
     description = (
         f"{script}\n\n"
-        f"{'─' * 40}\n"
+        f"{'\u2500' * 40}\n"
         f"{CHANNEL} — Daily AI tips for solopreneurs and freelancers.\n"
         f"One practical AI tip every day. Subscribe so you don't miss one.\n"
-        f"{'─' * 40}\n"
+        f"{'\u2500' * 40}\n"
         f"#AITips #AIProductivity #SolopreneurAI #LeverageAI #AIShorts #AITools"
     )
     tags = [
@@ -291,7 +293,7 @@ def upload_to_youtube(video_path: str, topic: str, script: str):
     return vid_id
 
 
-# ── MAIN ──────────────────────────────────────────────────────────────────────
+# ── MAIN ──────────────────────────────────────────────────────────────────────────────────
 def main():
     print(f"\n🚀 Leverage AI Daily Short Generator")
     print(f"📌 Today's topic: {TOPIC}\n")
@@ -303,7 +305,7 @@ def main():
     print("🎤 Generating voiceover with Edge-TTS...")
     asyncio.run(make_voice(script, AUDIO))
 
-    print("🎬 Fetching stock footage from Pexels...")
+    print("🎦 Fetching stock footage from Pexels...")
     if not fetch_footage(TOPIC, FOOTAGE):
         print("   Trying generic fallback...")
         fetch_footage("technology abstract", FOOTAGE)
